@@ -9,6 +9,7 @@ require 'securerandom'
 require 'monitor'
 require 'thread_safe'
 require 'rest-client'
+require 'ruby-progressbar'
 
 require_relative '../version'
 require_relative '../exceptions/exceptions'
@@ -380,6 +381,33 @@ module GoodData
       # @param uri [String] Target URI
       def get(uri, options = {}, &user_block)
         request(:get, uri, nil, options, &user_block)
+      end
+
+      def stream(uri, filename)
+        # To explain why is it done like it is:
+        # https://github.com/rest-client/rest-client/issues/452
+        #
+        File.open(filename, 'wb+') do |f|
+          block = proc do |response|
+            pb = ProgressBar::Base.new(title: filename, total: response.content_length)
+            total_bytes = 0
+            response.read_body do |chunk|
+              total_bytes += chunk.size
+              pb.progress = total_bytes
+              f.write chunk.force_encoding('UTF-8')
+            end
+          end
+          begin
+            RestClient::Request.new(method: :get,
+                                    url: URI.join(server_url, uri.to_s).to_s,
+                                    verify_ssl: verify_ssl,
+                                    headers: @webdav_headers.merge(:x_gdc_authtt => headers[:x_gdc_authtt]),
+                                    block_response: block).execute
+          rescue => e
+            GoodData.logger.error("Error when downloading file #{filename}", e)
+            raise e
+          end
+        end
       end
 
       # HTTP PUT
