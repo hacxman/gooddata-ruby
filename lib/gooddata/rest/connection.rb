@@ -9,6 +9,7 @@ require 'securerandom'
 require 'monitor'
 require 'thread_safe'
 require 'rest-client'
+require 'ruby-progressbar'
 
 require_relative '../version'
 require_relative '../exceptions/exceptions'
@@ -380,6 +381,47 @@ module GoodData
       # @param uri [String] Target URI
       def get(uri, options = {}, &user_block)
         request(:get, uri, nil, options, &user_block)
+      end
+
+      def stream(uri, filename)
+        uri = URI.join(server_url, uri.to_s)
+        puts "Streaming URL #{uri.to_s}"
+
+        q = { headers: @webdav_headers.merge(:x_gdc_authtt => headers[:x_gdc_authtt]) }
+        File.open(filename, 'wb+') do |fout|
+          Net::HTTP.start(uri.host, uri.port,
+                          q.merge(:use_ssl => uri.scheme == 'https',
+                                  :verify_mode => @verify_ssl)) do |http|
+            request = Net::HTTP::Get.new(uri)
+            request.initialize_http_header({'Accept'=> 'text/csv'})
+            q[:headers].each do |k,v|
+              request[k] = v
+            end
+            request.basic_auth(@server.options[:username], @server.options[:password])
+
+            req_ok = false
+            retries = 0
+            loop do
+              http.request(request.dup) do |response|
+                if response.code.to_i == 200 then
+                  total_bytes = 0
+                  pb = ProgressBar::Base.new(title: filename, total: response.content_length)
+                  response.read_body do |chunk|
+                    fout.write(chunk)
+                    total_bytes += chunk.size
+                    pb.progress = total_bytes
+                  end
+                  req_ok = true
+                end
+              end
+              break if retries > Helpers::GD_MAX_RETRY
+              break if req_ok
+              retries += 1
+              puts "Retrying (#{retries})"
+              sleep(retries)
+            end
+          end
+        end
       end
 
       # HTTP PUT

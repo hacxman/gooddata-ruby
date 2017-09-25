@@ -264,6 +264,10 @@ module GoodData
         @connection.get uri, opts, & block
       end
 
+      def stream(uri, file)
+        @connection.stream uri, file
+      end
+
       def project_webdav_path(opts = { project: GoodData.project })
         p = opts[:project]
         fail ArgumentError, 'No :project specified' if p.nil?
