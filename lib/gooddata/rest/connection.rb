@@ -387,27 +387,64 @@ module GoodData
         # To explain why is it done like it is:
         # https://github.com/rest-client/rest-client/issues/452
         #
-        File.open(filename, 'wb+') do |f|
-          block = proc do |response|
-            pb = ProgressBar::Base.new(title: filename, total: response.content_length)
-            total_bytes = 0
-            response.read_body do |chunk|
-              total_bytes += chunk.size
-              pb.progress = total_bytes
-              f.write chunk.force_encoding('UTF-8')
+        uri = URI.join(server_url, uri.to_s)
+        puts "Streaming URL #{URI.join(server_url, uri.to_s).to_s} at #{uri.port}"
+
+        q = { headers: @webdav_headers.merge(:x_gdc_authtt => headers[:x_gdc_authtt]) }
+        File.open(filename, 'wb+') do |fout|
+          Net::HTTP.start(uri.host, uri.port,
+                          q.merge(:use_ssl => uri.scheme == 'https',
+                                  :verify_mode => OpenSSL::SSL::VERIFY_NONE)) do |http|
+            request = Net::HTTP::Get.new uri
+            q[:headers].each do |k,v|
+              request[k] = v
+            end
+            request.basic_auth @server.options[:username], @server.options[:password]
+
+            http.request request do |response|
+              puts "got response"
+              #open 'large_file', 'w' do |io|
+                response.read_body do |chunk|
+                  puts "Working on response" 
+                  puts chunk
+                  fout.write chunk
+                end
+              #end
             end
           end
-          begin
-            RestClient::Request.new(method: :get,
-                                    url: URI.join(server_url, uri.to_s).to_s,
-                                    verify_ssl: verify_ssl,
-                                    headers: @webdav_headers.merge(:x_gdc_authtt => headers[:x_gdc_authtt]),
-                                    block_response: block).execute
-          rescue => e
-            GoodData.logger.error("Error when downloading file #{filename}", e)
-            raise e
-          end
         end
+        #File.open(filename, 'wb+') do |f|
+        #  block = proc do |response|
+        #    pb = ProgressBar::Base.new(title: filename, total: response.content_length)
+        #    #p response.content_type
+        #    #p response.methods
+        #    p ''
+        #    p ENV['LANG']
+        #    #p "asdfasf".encoding
+        #    p "response length = #{response.content_length}"
+        #    total_bytes = 0
+        #    puts ""
+        #    response.read_body do |chunk|
+        #      chunk = chunk.force_encoding('BINARY')
+        #      p chunk.encoding
+        #      total_bytes += chunk.size
+        #      pb.progress = total_bytes
+        #      #p "chuj ='#{chunk.codepoints}'"
+        #      p "chuj2 ='#{chunk}'"
+        #      f.write chunk #(chunk.codepoints.map(&:chr).join('')) #.force_encoding('UTF-8')
+        #    end
+        #  end
+        #  #begin
+        #    RestClient::Request.new(method: :get,
+        #                            url: URI.join(server_url, uri.to_s).to_s,
+        #                            verify_ssl: verify_ssl,
+        #                            headers: @webdav_headers.merge(:x_gdc_authtt => headers[:x_gdc_authtt]),
+        #                            block_response: block).execute
+        #  #rescue => e
+        #  #  GoodData.logger.error("Error when downloading file #{filename}", e)
+        #  #  raise e
+        #  #end
+        #end
       end
 
       # HTTP PUT
