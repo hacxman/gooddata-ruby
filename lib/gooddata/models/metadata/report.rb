@@ -181,7 +181,13 @@ module GoodData
     # @return [Net::HTTPResponse] Returns HTTP status
     def export_raw(filename)
       result = client.post("/gdc/app/projects/#{project.pid}/execute/raw", 'report_req' => { 'report' => uri })
-      client.stream(result['uri'], filename)
+      puts "Downloading #{result['uri']}"
+      client.connection.download(result['uri'], filename)
+#      p (client.poll_on_response(result['uri'], process: false) do |resp|
+#        p resp.code
+#        resp.code == 202
+#      end)
+      #client.stream(result['uri'], filename)
     end
 
     # Returns the newest (current version) report definition uri
